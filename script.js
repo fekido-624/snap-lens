@@ -2,35 +2,29 @@ const video = document.getElementById("camera");
 const canvas = document.getElementById("snapshot");
 const snapBtn = document.getElementById("snapBtn");
 
-const constraints = {
-  video: {
-    facingMode: { ideal: "environment" }
-  },
+const imgbbApiKey = "1c69615def5fc386d033e43bf69b31f2";         // Ganti API key imgbb
+const clarifaiApiKey = "bfc8a3c4c3514c15b0386b048ce9dbc7";   // Ganti API key Clarifai
+
+// Setup kamera belakang
+navigator.mediaDevices.getUserMedia({
+  video: { facingMode: { ideal: "environment" } },
   audio: false
-};
+})
+  .then(stream => { video.srcObject = stream; })
+  .catch(err => alert("Gagal akses kamera: " + err.message));
 
-// 1. Aktifkan kamera
-navigator.mediaDevices.getUserMedia(constraints)
-  .then(stream => {
-    video.srcObject = stream;
-  })
-  .catch(err => {
-    alert("Gagal akses kamera: " + err.message);
-  });
-
-// 2. Bila user klik SNAP
+// Bila tekan Snap
 snapBtn.addEventListener("click", () => {
-  // 2A. Ambil gambar dari video
+  // Tangkap gambar
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
   const ctx = canvas.getContext("2d");
   ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-  // 2B. Tukar ke base64 image
+  // Tukar ke base64
   const base64Image = canvas.toDataURL("image/jpeg").split(',')[1];
 
-  // 2C. Upload ke imgbb
-  const imgbbApiKey = "1c69615def5fc386d033e43bf69b31f2"; // Ganti dengan API key anda
+  // Upload ke imgbb
   const formData = new FormData();
   formData.append("image", base64Image);
 
@@ -38,17 +32,46 @@ snapBtn.addEventListener("click", () => {
     method: "POST",
     body: formData
   })
-    .then(response => response.json())
+    .then(res => res.json())
     .then(data => {
       const imageUrl = data.data.url;
-      console.log("Gambar berjaya dimuat naik:", imageUrl);
+      console.log("imgbb URL:", imageUrl);
 
-      // 2D. Redirect ke Google Lens
-      const lensUrl = `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(imageUrl)}`;
-      window.location.href = lensUrl;
+      // Hantar ke Clarifai
+      return fetch("https://api.clarifai.com/v2/models/general-image-recognition/outputs", {
+        method: "POST",
+        headers: {
+          "Accept": "application/json",
+          "Authorization": "Key " + clarifaiApiKey
+        },
+        body: JSON.stringify({
+          user_app_id: { user_id: "clarifai", app_id: "main" },
+          inputs: [{ data: { image: { url: imageUrl } } }]
+        })
+      });
     })
-    .catch(error => {
-      console.error("Gagal upload:", error);
-      alert("Gagal upload ke imgbb");
+    .then(res => res.json())
+    .then(json => {
+      const concepts = json.outputs[0].data.concepts;
+      const labels = concepts.map(c => c.name.toLowerCase());
+
+      console.log("Detected:", labels);
+
+      // Logik if
+      if (labels.includes("ram")) {
+        window.location.href = "https://shopee.com.my/search?keyword=ram";
+      } else if (labels.includes("keyboard")) {
+        window.location.href = "https://shopee.com.my/search?keyword=keyboard";
+      } else if (labels.includes("cpu")) {
+        window.location.href = "https://shopee.com.my/search?keyword=cpu";
+      } else if (labels.includes("power supply")) {
+        window.location.href = "https://shopee.com.my/search?keyword=psu";
+      } else {
+        alert("Tiada padanan dikesan.");
+      }
+    })
+    .catch(err => {
+      console.error("Ralat:", err);
+      alert("Ralat semasa pengesanan imej.");
     });
 });
